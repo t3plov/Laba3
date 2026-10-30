@@ -1,0 +1,4 @@
+digraph G {
+  rankdir=LR; node [shape=box, style="rounded,filled", fillcolor="#fff4df"];
+  App -> Ingestion [label="POST /api/v1/metrics"]; Ingestion -> Storage [label="POST /internal/v1/series"]; Ingestion -> Analysis [style=dashed, label="metrics.received"]; Analysis -> Storage [label="GET /internal/v1/series"]; Analysis -> Notification [style=dashed, label="anomaly.detected"]; Analysis -> Dashboard [style=dashed, label="anomaly.detected"]; Notification -> Channel [label="delivery"];
+}

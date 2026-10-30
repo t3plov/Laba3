@@ -1,0 +1,4 @@
+digraph G {
+  rankdir=LR; node [shape=box, style="rounded,filled", fillcolor="#ffe7e7"];
+  Analysis -> Notification [style=dashed, label="anomaly.detected"]; Notification -> Channel [label="send"]; Channel -> Notification [color=red, label="failure"]; Notification -> Notification [label="retry / fallback channel"]; Notification -> Dashboard [style=dashed, label="notification.failed"];
+}

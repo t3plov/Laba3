@@ -1,0 +1,71 @@
+﻿openapi: 3.1.0
+info:
+  title: Intelligent Monitoring API
+  version: 1.0.0
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        correlationId: {type: string, format: uuid}
+    MetricSample:
+      type: object
+      required: [timestamp, value]
+      properties:
+        timestamp: {type: string, format: date-time}
+        value: {type: number}
+paths:
+  /api/v1/sources:
+    post:
+      tags: [public]
+      summary: Подключить источник метрик
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, endpoint]
+              properties:
+                name: {type: string}
+                endpoint: {type: string, format: uri}
+            example: {name: demo-app, endpoint: https://demo.example/metrics}
+      responses:
+        '201': {description: Источник подключён}
+        '400': {description: Некорректные данные, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+        '409': {description: Источник уже существует}
+  /api/v1/metrics:
+    post:
+      tags: [public]
+      summary: Принять пакет метрик
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceId, metricName, samples]
+              properties:
+                sourceId: {type: string, format: uuid}
+                metricName: {type: string}
+                samples: {type: array, items: {$ref: '#/components/schemas/MetricSample'}}
+            example: {sourceId: 3f6c2b0e-8d1a-4c57-9e2f-5a1b7c9d0e44, metricName: cpu_usage, samples: [{timestamp: '2026-10-30T10:15:00Z', value: 72.4}]}
+      responses:
+        '202': {description: Пакет принят}
+        '400': {description: Некорректный пакет}
+        '404': {description: Источник не найден}

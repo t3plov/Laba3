@@ -1,0 +1,58 @@
+﻿openapi: 3.1.0
+info:
+  title: Intelligent Monitoring API
+  version: 1.0.0
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        correlationId: {type: string, format: uuid}
+    MetricSample:
+      type: object
+      required: [timestamp, value]
+      properties:
+        timestamp: {type: string, format: date-time}
+        value: {type: number}
+paths:
+  /api/v1/notification-rules:
+    post:
+      tags: [public]
+      summary: Создать правило уведомления
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metricName, condition, channel]
+              properties:
+                metricName: {type: string}
+                condition: {type: string, enum: [ANOMALY, FORECAST_THRESHOLD]}
+                channel: {type: string, enum: [EMAIL, WEBHOOK, TELEGRAM]}
+                threshold: {type: number}
+            example: {metricName: cpu_usage, condition: ANOMALY, channel: EMAIL}
+      responses:
+        '201': {description: Правило создано}
+        '400': {description: Некорректное правило}
+        '409': {description: Такое правило уже существует}
+  /api/v1/incidents:
+    get:
+      tags: [public]
+      summary: Получить историю инцидентов
+      parameters:
+        - {in: query, name: status, schema: {type: string, enum: [OPEN, DELIVERED, DELIVERY_FAILED]}}
+        - {in: query, name: page, schema: {type: integer, minimum: 1, default: 1}}
+        - {in: query, name: size, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: Список инцидентов}

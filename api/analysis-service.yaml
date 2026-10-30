@@ -1,0 +1,61 @@
+﻿openapi: 3.1.0
+info:
+  title: Intelligent Monitoring API
+  version: 1.0.0
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        correlationId: {type: string, format: uuid}
+    MetricSample:
+      type: object
+      required: [timestamp, value]
+      properties:
+        timestamp: {type: string, format: date-time}
+        value: {type: number}
+paths:
+  /api/v1/analyses:
+    post:
+      tags: [public]
+      summary: Запустить анализ метрики
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceId, metricName, from, to]
+              properties:
+                sourceId: {type: string, format: uuid}
+                metricName: {type: string}
+                from: {type: string, format: date-time}
+                to: {type: string, format: date-time}
+                forecastHorizon: {type: integer, minimum: 0}
+            example: {sourceId: 3f6c2b0e-8d1a-4c57-9e2f-5a1b7c9d0e44, metricName: cpu_usage, from: '2026-10-29T00:00:00Z', to: '2026-10-30T00:00:00Z', forecastHorizon: 12}
+      responses:
+        '202': {description: Анализ поставлен в очередь}
+        '400': {description: Некорректные параметры}
+        '409': {description: Аналогичный анализ уже выполняется}
+  /internal/v1/anomalies:
+    get:
+      tags: [internal]
+      summary: Получить результаты анализа
+      parameters:
+        - {in: query, name: sourceId, required: true, schema: {type: string, format: uuid}}
+        - {in: query, name: metricName, required: true, schema: {type: string}}
+        - {in: query, name: page, schema: {type: integer, minimum: 1, default: 1}}
+        - {in: query, name: size, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: Результаты получены}
+        '400': {description: Некорректные параметры}

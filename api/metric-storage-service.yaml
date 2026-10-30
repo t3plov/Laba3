@@ -1,0 +1,55 @@
+﻿openapi: 3.1.0
+info:
+  title: Intelligent Monitoring API
+  version: 1.0.0
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        correlationId: {type: string, format: uuid}
+    MetricSample:
+      type: object
+      required: [timestamp, value]
+      properties:
+        timestamp: {type: string, format: date-time}
+        value: {type: number}
+paths:
+  /internal/v1/series:
+    post:
+      tags: [internal]
+      summary: Сохранить временной ряд
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceId, metricName, samples]
+              properties:
+                sourceId: {type: string, format: uuid}
+                metricName: {type: string}
+                samples: {type: array, items: {$ref: '#/components/schemas/MetricSample'}}
+      responses:
+        '202': {description: Ряд сохранён}
+        '400': {description: Ошибка валидации}
+  /api/v1/series:
+    get:
+      tags: [public]
+      summary: Получить временной ряд
+      parameters:
+        - {in: query, name: sourceId, required: true, schema: {type: string, format: uuid}}
+        - {in: query, name: metricName, required: true, schema: {type: string}}
+        - {in: query, name: from, required: true, schema: {type: string, format: date-time}}
+        - {in: query, name: to, required: true, schema: {type: string, format: date-time}}
+        - {in: query, name: page, schema: {type: integer, minimum: 1, default: 1}}
+        - {in: query, name: size, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
+      responses:
+        '200': {description: Временной ряд получен}
+        '400': {description: Некорректный диапазон}
+        '404': {description: Ряд не найден}

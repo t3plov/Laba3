@@ -1,0 +1,8 @@
+digraph G {
+  rankdir=LR; node [shape=box, style="rounded,filled", fillcolor="#e8f1ff"];
+  Client [label="Web client"]; Gateway [label="API Gateway"];
+  Ingestion [label="Metrics Ingestion\nPostgreSQL"]; Storage [label="Metric Storage\nTimescaleDB"]; Analysis [label="Analysis\nPostgreSQL + S3"]; Notification [label="Notification\nPostgreSQL"]; Dashboard [label="Dashboard\nPostgreSQL"]; Kafka [shape=cylinder, label="Kafka"];
+  Client -> Gateway [label="REST"]; Gateway -> Ingestion; Gateway -> Storage; Gateway -> Analysis; Gateway -> Notification; Gateway -> Dashboard;
+  Ingestion -> Storage [label="REST"]; Analysis -> Storage [label="REST"]; Dashboard -> Storage [label="REST"];
+  Ingestion -> Kafka [style=dashed, label="metrics.received"]; Kafka -> Analysis [style=dashed]; Analysis -> Kafka [style=dashed, label="anomaly.detected / forecast.created"]; Kafka -> Notification [style=dashed]; Kafka -> Dashboard [style=dashed];
+}
