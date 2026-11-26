@@ -1,0 +1,106 @@
+{
+  "info": {
+    "name": "Laba4 — Intelligent Monitoring demo",
+    "description": "Коллекция запросов для демонстрации лабораторной работы №4. Переменные: base — API Gateway, notification — Notification Service (internal), channel — заглушка канала.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base", "value": "http://127.0.0.1:8080"},
+    {"key": "notification", "value": "http://127.0.0.1:8084"},
+    {"key": "channel", "value": "http://127.0.0.1:8089"}
+  ],
+  "item": [
+    {
+      "name": "01 Auth token (Keycloak mock)",
+      "event": [{"listen": "test", "script": {"exec": ["const j = pm.response.json(); pm.collectionVariables.set('token', j.access_token);"]}}],
+      "request": {
+        "method": "POST",
+        "url": "{{base}}/api/v1/auth/token",
+        "body": {"mode": "raw", "raw": "{\"username\": \"demo\", \"password\": \"demo\"}", "options": {"raw": {"language": "json"}}}
+      }
+    },
+    {
+      "name": "02 Create source (Idempotency-Key)",
+      "request": {
+        "method": "POST",
+        "url": "{{base}}/api/v1/sources",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{token}}"},
+          {"key": "Idempotency-Key", "value": "{{$guid}}"}
+        ],
+        "body": {"mode": "raw", "raw": "{\"name\": \"demo-app\", \"endpoint\": \"https://demo.example/metrics\"}", "options": {"raw": {"language": "json"}}}
+      }
+    },
+    {
+      "name": "03 List sources",
+      "request": {
+        "method": "GET",
+        "url": "{{base}}/api/v1/sources?page=1&size=20",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}]
+      }
+    },
+    {
+      "name": "04 Post metrics batch",
+      "request": {
+        "method": "POST",
+        "url": "{{base}}/api/v1/metrics",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{token}}"},
+          {"key": "Idempotency-Key", "value": "{{$guid}}"}
+        ],
+        "body": {"mode": "raw", "raw": "{\"sourceId\": \"<sourceId из шага 02>\", \"metricName\": \"cpu_usage\", \"samples\": [{\"timestamp\": \"2026-11-26T10:00:00Z\", \"value\": 50.0}, {\"timestamp\": \"2026-11-26T10:01:00Z\", \"value\": 52.0}, {\"timestamp\": \"2026-11-26T10:02:00Z\", \"value\": 900.0}]}", "options": {"raw": {"language": "json"}}}
+      }
+    },
+    {
+      "name": "05 Create notification rule",
+      "request": {
+        "method": "POST",
+        "url": "{{base}}/api/v1/notification-rules",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{token}}"},
+          {"key": "Idempotency-Key", "value": "{{$guid}}"}
+        ],
+        "body": {"mode": "raw", "raw": "{\"metricName\": \"cpu_usage\", \"condition\": \"ANOMALY\", \"channel\": \"EMAIL\", \"fallbackChannel\": \"TELEGRAM\"}", "options": {"raw": {"language": "json"}}}
+      }
+    },
+    {
+      "name": "06 Start analysis",
+      "request": {
+        "method": "POST",
+        "url": "{{base}}/api/v1/analyses",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{token}}"},
+          {"key": "Idempotency-Key", "value": "{{$guid}}"}
+        ],
+        "body": {"mode": "raw", "raw": "{\"sourceId\": \"<sourceId из шага 02>\", \"metricName\": \"cpu_usage\", \"from\": \"2026-11-26T00:00:00Z\", \"to\": \"2026-11-26T23:59:59Z\", \"forecastHorizon\": 6}", "options": {"raw": {"language": "json"}}}
+      }
+    },
+    {
+      "name": "07 List incidents",
+      "request": {
+        "method": "GET",
+        "url": "{{base}}/api/v1/incidents?size=20",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}]
+      }
+    },
+    {
+      "name": "08 Delivery attempts (internal, сага)",
+      "request": {
+        "method": "GET",
+        "url": "{{notification}}/internal/v1/incidents/<incidentId>/attempts"
+      }
+    },
+    {
+      "name": "09 Channel mock: основной канал падает",
+      "request": {
+        "method": "POST",
+        "url": "{{channel}}/admin/mode",
+        "body": {"mode": "raw", "raw": "{\"primary\": \"fail\", \"fallback\": \"ok\"}", "options": {"raw": {"language": "json"}}}
+      }
+    },
+    {
+      "name": "10 Channel mock: сброс режимов",
+      "request": {"method": "POST", "url": "{{channel}}/admin/reset"}
+    }
+  ]
+}

@@ -1,3 +1,119 @@
+# Микросервисная система интеллектуального мониторинга приложений
+
+Репозиторий содержит лабораторные работы №3 (проектирование) и №4 (реализация).
+Проект из лабы №3 — система анализа метрик с ML-обнаружением аномалий — реализован
+и расширен в лабе №4: сервисы подняты, взаимодействия работают по контрактам `api/*.yaml`.
+
+## Лабораторная работа №4: реализация микросервисов
+
+### Стек и обоснование
+
+Python 3.11 + FastAPI + uvicorn для всех сервисов: pydantic-модели дают
+contract-first реализацию схем из OpenAPI лабы №3, автодокументацию и валидацию
+«из коробки»; httpx — синхронные межсервисные вызовы; единый язык упрощает
+сопровождение небольшого набора сервисов. Инфраструктура: Kafka (брокер событий)
+и PostgreSQL (по базе на сервис) в docker-compose; SQLite и in-memory шина —
+для локального запуска и тестов без внешних зависимостей.
+
+### Реализованные сервисы
+
+| Сервис | Модуль | Порт | Хранилище (своё) |
+|---|---|---|---|
+| API Gateway | `services/gateway` | 8080 | без состояния (+ мок Keycloak: выдача JWT) |
+| Metrics Ingestion | `services/metrics_ingestion` | 8081 | источники, пакеты, идемпотентность |
+| Metric Storage | `services/metric_storage` | 8082 | временные ряды |
+| Analysis | `services/analysis` | 8083 | задачи анализа, модели, идемпотентность |
+| Notification | `services/notification` | 8084 | правила, инциденты, попытки доставки |
+| Dashboard | `services/dashboard` | 8085 | дашборды, ленты событий |
+
+### Синхронные взаимодействия (REST, по контрактам)
+
+1. Gateway → каждый сервис (проксирование `/api/v1/*`);
+2. Ingestion → Storage: `POST /internal/v1/series`;
+3. Analysis → Storage: `GET /internal/v1/series`;
+4. Dashboard → Storage: `GET /internal/v1/series` и Dashboard → Analysis: `GET /internal/v1/anomalies`.
+
+### Асинхронные взаимодействия (брокер сообщений)
+
+| Топик | Издатель | Подписчики |
+|---|---|---|
+| `metrics.received` | Ingestion | Analysis |
+| `anomaly.detected` | Analysis | Notification, Dashboard |
+| `forecast.created` | Analysis | Notification, Dashboard |
+| `notification.delivered` | Notification | Dashboard |
+| `notification.failed` | Notification | Dashboard |
+
+### Сквозной сценарий и сага
+
+Метрики → хранение → анализ → аномалия → уведомление затрагивает 5 бизнес-сервисов.
+Сбой доставки обрабатывается сагой: повторные попытки основного канала, затем
+компенсирующее действие (резервный канал); при полном сбое инцидент получает
+`DELIVERY_FAILED` и публикуется `notification.failed`. Подробности и реальный вывод:
+[docs/demo-scenarios.md](docs/demo-scenarios.md).
+
+### Сквозные требования
+
+- **Idempotency-Key** — создание источника, приём метрик, запуск анализа, правила, дашборды;
+- **единая модель ошибок** — Problem Details (RFC 7807), `application/problem+json` во всех сервисах;
+- **correlation id** — заголовок `X-Correlation-Id` проходит через Gateway и все вызовы;
+- **авторизация** — JWT проверяется каждым сервисом на публичных эндпоинтах.
+
+### Моки и реальные компоненты
+
+| Компонент | Режим |
+|---|---|
+| Kafka | реально в docker-compose; in-memory шина локально и в тестах |
+| PostgreSQL | реально в docker-compose (база на сервис); SQLite локально и в тестах |
+| Keycloak | мок: JWT выдаёт Gateway (`POST /api/v1/auth/token`, demo/demo, admin/admin) |
+| Провайдер уведомлений | мок `mocks/channel_mock.py` с управляемыми сбоями |
+
+Подробности: [mocks/README.md](mocks/README.md).
+
+### Запуск
+
+Вариант A — docker compose (Kafka + PostgreSQL реально):
+
+```bash
+docker compose up --build -d
+# Gateway: http://localhost:8080, заглушка канала: http://localhost:8089
+```
+
+Вариант B — без Docker (SQLite + in-memory брокер, один процесс):
+
+```bash
+pip install -r services/requirements.txt
+python scripts/run_local.py --single
+```
+
+### Проверка сценариев
+
+```bash
+python -m pytest services/tests          # unit + интеграционные тесты (10 тестов)
+python scripts/demo_scenarios.py         # сквозные сценарии: успех, сбой с компенсацией, полный сбой
+```
+
+Коллекция запросов для ручной проверки: [postman/Laba4.postman_collection.json](postman/Laba4.postman_collection.json).
+
+### Структура репозитория
+
+```text
+├── README.md                  # отчёт лаб 3 и 4, инструкции
+├── docker-compose.yml         # Kafka, PostgreSQL, сервисы, заглушка канала
+├── api/                       # OpenAPI-контракты сервисов (лаба 3)
+├── docs/                      # схемы (лаба 3), demo-scenarios.md, demo-output.txt
+├── docker/                    # Dockerfile и инициализация PostgreSQL
+├── mocks/                     # заглушка канала уведомлений + описание моков
+├── postman/                   # коллекция запросов для демонстрации
+├── scripts/                   # локальный запуск и демонстрация сценариев
+└── services/                  # исходный код сервисов и тесты
+    ├── shared/                # общий слой: конфиг, БД, ошибки, события, JWT, ML
+    ├── gateway/ metrics_ingestion/ metric_storage/ analysis/ notification/ dashboard/
+    └── tests/                 # unit- и интеграционные тесты
+```
+
+---
+
+# Лабораторная работа №3. Декомпозиция и проектирование (отчёт)
 # Лабораторная работа №3
 ## Декомпозиция и проектирование микросервисной системы
 

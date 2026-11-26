@@ -1,0 +1,93 @@
+# Локальный запуск системы интеллектуального мониторинга (лабораторная работа №4).
+# Реальные инфраструктурные компоненты: Kafka (брокер событий) и PostgreSQL
+# (отдельная база на каждый сервис). Канал уведомлений заменён заглушкой.
+services:
+  kafka:
+    image: apache/kafka:3.9.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTQENDM2Qk
+    ports:
+      - "9094:9094"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: lab
+    volumes:
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+
+  channel-mock:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: python -m mocks.channel_mock
+    ports:
+      - "8089:8089"
+
+  gateway:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: python -m gateway.main
+    environment: &svc-env
+      DB_BACKEND: postgres
+      BROKER_BACKEND: kafka
+      KAFKA_BOOTSTRAP: kafka:9092
+      JWT_SECRET: dev-secret-key
+    ports:
+      - "8080:8080"
+    depends_on: [kafka, postgres, channel-mock]
+
+  ingestion:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: python -m metrics_ingestion.main
+    environment:
+      <<: *svc-env
+      DATABASE_URL: postgresql://lab:lab@postgres:5432/lab_ingestion
+      STORAGE_URL: http://storage:8082
+    depends_on: [kafka, postgres]
+
+  storage:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: python -m metric_storage.main
+    environment:
+      <<: *svc-env
+      DATABASE_URL: postgresql://lab:lab@postgres:5432/lab_storage
+    depends_on: [kafka, postgres]
+
+  analysis:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: python -m analysis.main
+    environment:
+      <<: *svc-env
+      DATABASE_URL: postgresql://lab:lab@postgres:5432/lab_analysis
+      STORAGE_URL: http://storage:8082
+    depends_on: [kafka, postgres]
+
+  notification:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: python -m notification.main
+    environment:
+      <<: *svc-env
+      DATABASE_URL: postgresql://lab:lab@postgres:5432/lab_notification
+      NOTIFICATION_CHANNEL_URL: http://channel-mock:8089
+      NOTIFICATION_FALLBACK_URL: http://channel-mock:8089/fallback
+    depends_on: [kafka, postgres, channel-mock]
+
+  dashboard:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: python -m dashboard.main
+    environment:
+      <<: *svc-env
+      DATABASE_URL: postgresql://lab:lab@postgres:5432/lab_dashboard
+      STORAGE_URL: http://storage:8082
+      ANALYSIS_URL: http://analysis:8083
+    depends_on: [kafka, postgres]
